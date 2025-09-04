@@ -59,6 +59,8 @@ def restart_system(force):  # pragma: no cover - system call
 def create_server(port, command, force, log_queue):
     """Start an OSC server in a background thread and return the server."""
 
+=======
+
 def start_server(port, command, force, log_queue):
 
     if Dispatcher is None or ThreadingOSCUDPServer is None:
@@ -76,6 +78,10 @@ def start_server(port, command, force, log_queue):
     dispatcher.set_default_handler(handle)
     server = ThreadingOSCUDPServer(("0.0.0.0", port), dispatcher)
     logging.info("Listening on port %s for /%s", port, command)
+
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+=======
 
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
@@ -111,19 +117,31 @@ def build_gui():
 
     Label(
         root,
+        text=(
+            "Server auto-starts. Save to restart with new settings.\n"
+            "Incoming commands appear below."
+        ),
+=======
+
+    Label(
+        root,
         text="Server auto-starts. Save to restart with new settings.\nIncoming commands appear below.",
+
     ).grid(row=4, column=0, columnspan=2)
 
     log_queue = Queue()
     server = create_server(
         cfg["port"], cfg["command"], cfg.get("force", DEFAULT_FORCE), log_queue
     )
+
+=======
 =======
     Label(root, text="Configure and start. Incoming commands appear below.").grid(
         row=4, column=0, columnspan=2
     )
 
     log_queue = Queue()
+
 
 
     def poll_log():
@@ -137,25 +155,34 @@ def build_gui():
 
     def save_and_restart():
         nonlocal server
+
+=======
 =======
     def save_and_start():
+
 
         port = int(port_entry.get())
         cmd = cmd_entry.get()
         force = force_var.get()
         save_config(port, cmd, force)
 
+=======
+
+
         server.shutdown()
         server.server_close()
         server = create_server(port, cmd, force, log_queue)
 
     Button(root, text="Save & Restart", command=save_and_restart).grid(
+
+=======
 =======
         threading.Thread(
             target=start_server, args=(port, cmd, force, log_queue), daemon=True
         ).start()
 
     Button(root, text="Save & Start", command=save_and_start).grid(
+
 
         row=6, column=0, columnspan=2
     )
