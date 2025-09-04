@@ -56,13 +56,8 @@ def restart_system(force):  # pragma: no cover - system call
     os.system(cmd)
 
 
-def create_server(port, command, force, log_queue):
-    """Start an OSC server in a background thread and return the server."""
-
-=======
-
 def start_server(port, command, force, log_queue):
-
+    """Create and start an OSC server in a background thread; return the server."""
     if Dispatcher is None or ThreadingOSCUDPServer is None:
         raise ImportError("python-osc is required to run the OSC server")
 
@@ -81,13 +76,6 @@ def start_server(port, command, force, log_queue):
 
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
-=======
-
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server
-=======
-    server.serve_forever()
-
 
 
 def build_gui():
@@ -112,37 +100,26 @@ def build_gui():
         row=3, column=0, columnspan=2
     )
 
-    log_text = Text(root, height=8, width=40, state="disabled")
-    log_text.grid(row=5, column=0, columnspan=2)
-
-    Label(
-        root,
-        text=(
-            "Server auto-starts. Save to restart with new settings.\n"
-            "Incoming commands appear below."
-        ),
-=======
-
     Label(
         root,
         text="Server auto-starts. Save to restart with new settings.\nIncoming commands appear below.",
-
     ).grid(row=4, column=0, columnspan=2)
 
-    log_queue = Queue()
-    server = create_server(
-        cfg["port"], cfg["command"], cfg.get("force", DEFAULT_FORCE), log_queue
-    )
-
-=======
-=======
-    Label(root, text="Configure and start. Incoming commands appear below.").grid(
-        row=4, column=0, columnspan=2
-    )
+    log_text = Text(root, height=8, width=40, state="disabled")
+    log_text.grid(row=5, column=0, columnspan=2)
 
     log_queue = Queue()
 
-
+    # Start the server immediately with the loaded config
+    try:
+        server = start_server(
+            cfg["port"], cfg["command"], cfg.get("force", DEFAULT_FORCE), log_queue
+        )
+    except Exception as e:
+        # Surface startup errors in the UI
+        log_text.configure(state="normal")
+        log_text.insert(END, f"Error starting server: {e}\n")
+        log_text.configure(state="disabled")
 
     def poll_log():
         while not log_queue.empty():
@@ -155,35 +132,26 @@ def build_gui():
 
     def save_and_restart():
         nonlocal server
-
-=======
-=======
-    def save_and_start():
-
-
         port = int(port_entry.get())
-        cmd = cmd_entry.get()
-        force = force_var.get()
-        save_config(port, cmd, force)
+        cmd = cmd_entry.get().strip()
+        frc = force_var.get()
 
-=======
+        save_config(port, cmd, frc)
 
+        try:
+            server.shutdown()
+            server.server_close()
+        except Exception:
+            pass  # If server wasn't running yet
 
-        server.shutdown()
-        server.server_close()
-        server = create_server(port, cmd, force, log_queue)
+        try:
+            server = start_server(port, cmd, frc, log_queue)
+            logging.info("Restarted server on port %s for /%s", port, cmd)
+            log_queue.put(f"Restarted server on port {port} for /{cmd}")
+        except Exception as e:
+            log_queue.put(f"Error restarting server: {e}")
 
     Button(root, text="Save & Restart", command=save_and_restart).grid(
-
-=======
-=======
-        threading.Thread(
-            target=start_server, args=(port, cmd, force, log_queue), daemon=True
-        ).start()
-
-    Button(root, text="Save & Start", command=save_and_start).grid(
-
-
         row=6, column=0, columnspan=2
     )
 

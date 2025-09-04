@@ -1,5 +1,1 @@
-{
-  "port": 8000,
-  "command": "restartpc",
-  "force": true
-}
+{"port": 9001, "command": "restartpc", "force": true}
