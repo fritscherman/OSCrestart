@@ -17,6 +17,7 @@ CONFIG_FILE = "config.json"
 LOG_FILE = "osc_restart.log"
 DEFAULT_PORT = 8000
 DEFAULT_COMMAND = "restartpc"
+DEFAULT_SHUTDOWN_COMMAND = "shutdownpc"
 DEFAULT_FORCE = True
 
 logging.basicConfig(
@@ -34,13 +35,22 @@ def load_config():
         return {
             "port": DEFAULT_PORT,
             "command": DEFAULT_COMMAND,
+            "shutdown_command": DEFAULT_SHUTDOWN_COMMAND,
             "force": DEFAULT_FORCE,
         }
 
 
-def save_config(port, command, force):
+def save_config(port, command, shutdown_command, force):
     with open(CONFIG_FILE, "w", encoding="utf-8") as file:
-        json.dump({"port": port, "command": command, "force": force}, file)
+        json.dump(
+            {
+                "port": port,
+                "command": command,
+                "shutdown_command": shutdown_command,
+                "force": force,
+            },
+            file,
+        )
 
 
 def restart_system(force):  # pragma: no cover - system call
@@ -56,7 +66,20 @@ def restart_system(force):  # pragma: no cover - system call
     os.system(cmd)
 
 
-def start_server(port, command, force, log_queue):
+def shutdown_system(force):  # pragma: no cover - system call
+    system = platform.system()
+    if system == "Windows":
+        cmd = "shutdown /s /t 0"
+        if force:
+            cmd = "shutdown /s /f /t 0"
+    else:
+        cmd = "sudo shutdown -h now"
+        if force:
+            cmd = "sudo shutdown -h -f now"
+    os.system(cmd)
+
+
+def start_server(port, command, shutdown_command, force, log_queue):
     """Create and start an OSC server in a background thread; return the server."""
     if Dispatcher is None or ThreadingOSCUDPServer is None:
         raise ImportError("python-osc is required to run the OSC server")
@@ -69,10 +92,12 @@ def start_server(port, command, force, log_queue):
         log_queue.put(msg)
         if address == f"/{command}":
             restart_system(force)
+        elif address == f"/{shutdown_command}":
+            shutdown_system(force)
 
     dispatcher.set_default_handler(handle)
     server = ThreadingOSCUDPServer(("0.0.0.0", port), dispatcher)
-    logging.info("Listening on port %s for /%s", port, command)
+    logging.info("Listening on port %s for /%s and /%s", port, command, shutdown_command)
 
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
@@ -82,38 +107,47 @@ def build_gui():
     cfg = load_config()
 
     root = Tk()
-    root.title("OSC Restart Config")
+    root.title("OSC Restart/Shutdown Config")
 
-    Label(root, text="OSC Restart Listener").grid(row=0, column=0, columnspan=2)
+    Label(root, text="OSC Restart/Shutdown Listener").grid(row=0, column=0, columnspan=2)
     Label(root, text="Port:").grid(row=1, column=0)
     port_entry = Entry(root)
     port_entry.insert(0, str(cfg["port"]))
     port_entry.grid(row=1, column=1)
 
-    Label(root, text="Command:").grid(row=2, column=0)
+    Label(root, text="Restart Command:").grid(row=2, column=0)
     cmd_entry = Entry(root)
     cmd_entry.insert(0, cfg["command"])
     cmd_entry.grid(row=2, column=1)
 
+    Label(root, text="Shutdown Command:").grid(row=3, column=0)
+    shutdown_entry = Entry(root)
+    shutdown_entry.insert(0, cfg.get("shutdown_command", DEFAULT_SHUTDOWN_COMMAND))
+    shutdown_entry.grid(row=3, column=1)
+
     force_var = BooleanVar(value=cfg.get("force", DEFAULT_FORCE))
-    Checkbutton(root, text="Force restart", variable=force_var).grid(
-        row=3, column=0, columnspan=2
+    Checkbutton(root, text="Force restart/shutdown", variable=force_var).grid(
+        row=4, column=0, columnspan=2
     )
 
     Label(
         root,
         text="Server auto-starts. Save to restart with new settings.\nIncoming commands appear below.",
-    ).grid(row=4, column=0, columnspan=2)
+    ).grid(row=5, column=0, columnspan=2)
 
     log_text = Text(root, height=8, width=40, state="disabled")
-    log_text.grid(row=5, column=0, columnspan=2)
+    log_text.grid(row=6, column=0, columnspan=2)
 
     log_queue = Queue()
 
     # Start the server immediately with the loaded config
     try:
         server = start_server(
-            cfg["port"], cfg["command"], cfg.get("force", DEFAULT_FORCE), log_queue
+            cfg["port"],
+            cfg["command"],
+            cfg.get("shutdown_command", DEFAULT_SHUTDOWN_COMMAND),
+            cfg.get("force", DEFAULT_FORCE),
+            log_queue,
         )
     except Exception as e:
         # Surface startup errors in the UI
@@ -134,9 +168,10 @@ def build_gui():
         nonlocal server
         port = int(port_entry.get())
         cmd = cmd_entry.get().strip()
+        shutdown_cmd = shutdown_entry.get().strip()
         frc = force_var.get()
 
-        save_config(port, cmd, frc)
+        save_config(port, cmd, shutdown_cmd, frc)
 
         try:
             server.shutdown()
@@ -145,14 +180,14 @@ def build_gui():
             pass  # If server wasn't running yet
 
         try:
-            server = start_server(port, cmd, frc, log_queue)
-            logging.info("Restarted server on port %s for /%s", port, cmd)
-            log_queue.put(f"Restarted server on port {port} for /{cmd}")
+            server = start_server(port, cmd, shutdown_cmd, frc, log_queue)
+            logging.info("Restarted server on port %s for /%s and /%s", port, cmd, shutdown_cmd)
+            log_queue.put(f"Restarted server on port {port} for /{cmd} and /{shutdown_cmd}")
         except Exception as e:
             log_queue.put(f"Error restarting server: {e}")
 
     Button(root, text="Save & Restart", command=save_and_restart).grid(
-        row=6, column=0, columnspan=2
+        row=7, column=0, columnspan=2
     )
 
     poll_log()
